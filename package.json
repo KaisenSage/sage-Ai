@@ -1,0 +1,23 @@
+{
+  "name": "sage-ai",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "api": "cd apps/api && npm run dev",
+    "admin": "cd apps/admin && npm run dev",
+    "db:migrate": "cd packages/database && npm run db:migrate",
+    "db:generate": "cd packages/database && npm run db:generate",
+    "db:seed": "cd packages/database && npm run db:seed",
+    "db:studio": "cd packages/database && npm run db:studio"
+  },
+  "devDependencies": {
+    "turbo": "^1.11.0",
+    "typescript": "^5.3.3"
+  }
+}
