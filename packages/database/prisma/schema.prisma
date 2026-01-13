@@ -1,0 +1,325 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Multi-tenant support - Each business is a tenant
+model Business {
+  id         String   @id @default(cuid())
+  name       String
+  slug       String   @unique
+  email      String
+  phone      String
+  logo       String?
+  settings   Json?    // Business-wide settings (timezone, currency, etc.)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Relations
+  branches   Branch[]
+  categories Category[]
+  products   Product[]
+  staff      Staff[]
+  orders     Order[]
+  discounts  Discount[]
+
+  @@map("businesses")
+}
+
+// Branches - Multiple locations per business
+model Branch {
+  id              String   @id @default(cuid())
+  businessId      String
+  name            String
+  address         String
+  city            String
+  state           String
+  country         String
+  coordinates     Json?    // { lat, lng }
+  phone           String
+  email           String
+  isActive        Boolean  @default(true)
+  orderingEnabled Boolean  @default(true)
+  settings        Json?    // Opening hours, delivery zones, etc.
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  business       Business        @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  orders         Order[]
+  branchProducts BranchProduct[]
+
+  @@map("branches")
+}
+
+// Categories - Product organization
+model Category {
+  id          String   @id @default(cuid())
+  businessId  String
+  name        String
+  description String?
+  imageUrl    String?
+  order       Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  business Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  products Product[]
+
+  @@map("categories")
+}
+
+// Products - Core menu items/products
+model Product {
+  id              String   @id @default(cuid())
+  businessId      String
+  categoryId      String
+  name            String
+  description     String?
+  basePrice       Float
+  images          Json?    // Array of image URLs
+  isAvailable     Boolean  @default(true)
+  preparationTime Int?     // in minutes
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  business       Business        @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  category       Category        @relation(fields: [categoryId], references: [id])
+  variants       ProductVariant[]
+  addons         Addon[]
+  branchProducts BranchProduct[]
+  orderItems     OrderItem[]
+
+  @@map("products")
+}
+
+// Product Variants - Sizes, options (Small/Medium/Large)
+model ProductVariant {
+  id            String   @id @default(cuid())
+  productId     String
+  name          String
+  priceModifier Float    // Amount to add/subtract from base price
+  isAvailable   Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@map("product_variants")
+}
+
+// Addons - Extras, toppings, add-ons
+model Addon {
+  id          String   @id @default(cuid())
+  productId   String
+  name        String
+  price       Float
+  isRequired  Boolean  @default(false)
+  maxQuantity Int      @default(1)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@map("addons")
+}
+
+// Branch-specific product availability and pricing
+model BranchProduct {
+  id            String   @id @default(cuid())
+  branchId      String
+  productId     String
+  isAvailable   Boolean  @default(true)
+  branchPrice   Float?   // Override base price for this branch
+  stockQuantity Int?     // Optional inventory tracking
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  branch  Branch  @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([branchId, productId])
+  @@map("branch_products")
+}
+
+// Customers - End users
+model Customer {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  phone         String   @unique
+  name          String
+  passwordHash  String
+  emailVerified Boolean  @default(false)
+  phoneVerified Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  orders    Order[]
+  addresses CustomerAddress[]
+
+  @@map("customers")
+}
+
+// Customer Delivery Addresses
+model CustomerAddress {
+  id          String   @id @default(cuid())
+  customerId  String
+  label       String   // "Home", "Work", etc.
+  address     String
+  city        String
+  coordinates Json?    // { lat, lng }
+  isDefault   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@map("customer_addresses")
+}
+
+// Orders
+model Order {
+  id             String        @id @default(cuid())
+  orderNumber    String        @unique
+  businessId     String
+  branchId       String
+  customerId     String
+  status         OrderStatus   @default(PENDING)
+  orderType      OrderType
+  subtotal       Float
+  taxAmount      Float         @default(0)
+  deliveryFee    Float         @default(0)
+  discountAmount Float         @default(0)
+  totalAmount    Float
+  paymentStatus  PaymentStatus @default(PENDING)
+  paymentMethod  String?
+  notes          String?
+  tableNumber    String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  completedAt    DateTime?
+
+  // Relations
+  business Business    @relation(fields: [businessId], references: [id])
+  branch   Branch      @relation(fields: [branchId], references: [id])
+  customer Customer    @relation(fields: [customerId], references: [id])
+  items    OrderItem[]
+
+  @@map("orders")
+}
+
+// Order Items
+model OrderItem {
+  id                  String   @id @default(cuid())
+  orderId             String
+  productId           String
+  quantity            Int
+  unitPrice           Float
+  totalPrice          Float
+  selectedVariants    Json?    // Selected variant IDs and names
+  selectedAddons      Json?    // Selected addon IDs, names, and quantities
+  specialInstructions String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  // Relations
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+
+  @@map("order_items")
+}
+
+// Staff - Business staff and admins
+model Staff {
+  id           String     @id @default(cuid())
+  businessId   String
+  email        String     @unique
+  passwordHash String
+  name         String
+  phone        String
+  role         StaffRole
+  permissions  Json?      // Additional granular permissions
+  isActive     Boolean    @default(true)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  // Relations
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@map("staff")
+}
+
+// Discounts - Promotional codes
+model Discount {
+  id                String       @id @default(cuid())
+  businessId        String
+  code              String       @unique
+  description       String?
+  discountType      DiscountType
+  discountValue     Float
+  minOrderAmount    Float?
+  maxDiscountAmount Float?
+  validFrom         DateTime?
+  validUntil        DateTime?
+  usageLimit        Int?
+  usedCount         Int          @default(0)
+  isActive          Boolean      @default(true)
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  // Relations
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@map("discounts")
+}
+
+// Enums
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PREPARING
+  READY
+  COMPLETED
+  CANCELLED
+}
+
+enum OrderType {
+  DINE_IN
+  PICKUP
+  DELIVERY
+  WALK_IN
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum StaffRole {
+  OWNER
+  ADMIN
+  MANAGER
+  STAFF
+}
+
+enum DiscountType {
+  PERCENTAGE
+  FIXED_AMOUNT
+}
